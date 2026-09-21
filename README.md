@@ -49,6 +49,10 @@ python scripts/run_acd_day.py SPY 2026-09-18 --a-atr 0.1 --c-atr 0.15 --confirm 
 python scripts/update_universe.py        # refresh the S&P 500 list (occasionally)
 python scripts/acd_nightly_pivots.py
 
+# Morning (after the 20-min OR, from 09:51 ET / 06:51 PT): ORs vs pivot ranges, A/C levels
+#   -> data/acd/morning/or_scan_<date>.xlsx, all stocks; or_outside_pr = OR fully above/below PR
+python scripts/acd_morning_or_scan.py
+
 # Levels only (pivot range, OR, A/C) for several tickers
 python scripts/run_acd_day.py SPY QQQ IWM 2026-09-18 --levels-only --a-atr 0.1 --c-atr 0.15
 

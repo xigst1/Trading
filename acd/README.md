@@ -14,6 +14,15 @@
 
 The simulator takes a minute DataFrame and the previous day's H/L/C. It never calls a data vendor itself.
 
+## Daily S&P 500 workflow
+
+| When | Command | Output |
+|---|---|---|
+| After the close (16:15 ET or later) | `python scripts/acd_nightly_pivots.py` | `data/acd/pivots/pivot_ranges_<session>.csv`: next session's pivot range and ATR5/10/14/20 for all 503 stocks |
+| After the OR (09:51 ET for a 20-minute OR) | `python scripts/acd_morning_or_scan.py` | `data/acd/morning/or_scan_<date>.xlsx` with all 503 stocks, their OR, PR, A and C levels, and a boolean `or_outside_pr` (True when the OR is entirely **above** or **below** the pivot range). The terminal lists them grouped above / below / overlapping |
+
+The morning scan builds the OR from 5-minute bars. On 100 stocks these matched the 1-minute OR exactly, at about a fifth of the data. A = `--a-atr` × ATR and C = `--c-atr` × ATR, using the ATR from the nightly file (defaults 0.10 and 0.15 × ATR14; the C default is a placeholder). An OR that touches the pivot range counts as overlapping (`or_outside_pr = False`). No stock is dropped. A `*` after a symbol means some OR bars were missing, usually a thinly traded stock with a 5-minute bar containing no trades. Code: `pivot_scan.py` (nightly) and `morning_scan.py` (morning).
+
 ## V1 rules (as implemented)
 
 1. **Opening range:** high and low of the bars in `[09:30, 09:30 + OR minutes)`. Trading starts at the end of the OR.

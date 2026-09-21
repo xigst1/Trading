@@ -7,6 +7,7 @@ request. Use scripts/download_data.py regularly to archive minute data locally.
 from __future__ import annotations
 
 import datetime as dt
+import time
 from typing import Dict, List
 
 import pandas as pd
@@ -81,6 +82,46 @@ class YFinanceProvider(MarketDataProvider):
                 sub = sub.dropna(subset=[c for c in ("Open", "High", "Low", "Close") if c in sub.columns])
                 if not sub.empty:
                     out[ticker] = standardize_daily(sub)
+        return out
+
+    def get_intraday_batch(self, tickers: List[str], date: DateLike, interval: str = "5m",
+                           retry_wait_seconds: int = 30) -> Dict[str, pd.DataFrame]:
+        """One day of intraday bars for many tickers (yfinance fetches them in parallel,
+        roughly one HTTP request per ticker). Retries once if the batch fails or comes back
+        empty, which is how Yahoo throttling usually shows up.
+
+        Returns {ticker: standard OHLCV frame}; tickers with no bars are omitted.
+        """
+        import yfinance as yf
+
+        day = parse_date(date)
+
+        def download():
+            return yf.download(tickers, start=day.isoformat(), end=(day + dt.timedelta(days=1)).isoformat(),
+                               interval=interval, group_by="ticker", auto_adjust=False, actions=False,
+                               prepost=self.prepost, threads=True, progress=False)
+
+        try:
+            raw = download()
+        except Exception:
+            raw = None
+        if raw is None or raw.empty:
+            time.sleep(retry_wait_seconds)
+            raw = download()
+        if raw is None or raw.empty:
+            return {}
+
+        out: Dict[str, pd.DataFrame] = {}
+        for ticker in tickers:
+            if isinstance(raw.columns, pd.MultiIndex):
+                if ticker not in raw.columns.get_level_values(0):
+                    continue
+                sub = raw[ticker]
+            else:
+                sub = raw
+            sub = sub.dropna(subset=[c for c in ("Open", "High", "Low", "Close") if c in sub.columns])
+            if not sub.empty:
+                out[ticker] = standardize_ohlcv(sub)
         return out
 
     def get_daily_data(self, ticker: str, start: DateLike, end: DateLike) -> pd.DataFrame:

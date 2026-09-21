@@ -12,7 +12,7 @@ from typing import Optional
 
 import pandas as pd
 
-from acd.levels import PivotRange
+from acd.levels import OpeningRange, PivotRange
 
 UP = "UP"
 DOWN = "DOWN"
@@ -129,6 +129,16 @@ def price_vs_pivot_range(price: float, pivot_range: PivotRange) -> str:
     if price < pivot_range.low:
         return "BELOW"
     return "INSIDE"
+
+
+def or_vs_pivot_range(opening_range: OpeningRange, pivot_range: PivotRange) -> str:
+    """ABOVE: whole OR above the pivot range (OR low > PR high). BELOW: whole OR below it
+    (OR high < PR low). Anything else, including touching edges, is OVERLAPPING."""
+    if opening_range.low > pivot_range.high:
+        return "ABOVE"
+    if opening_range.high < pivot_range.low:
+        return "BELOW"
+    return "OVERLAPPING"
 
 
 def pivot_range_relationship(previous: PivotRange, current: PivotRange) -> str:
