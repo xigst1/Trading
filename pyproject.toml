@@ -1,0 +1,9 @@
+[project]
+name = "trading"
+version = "0.1.0"
+description = "Local trading research: data download, strategy signals, simulation and a Streamlit UI"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
