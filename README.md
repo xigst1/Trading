@@ -44,6 +44,11 @@ python scripts/download_data.py SPY QQQ --minute-days 29
 # Simulate one ACD day and write an annotated chart
 python scripts/run_acd_day.py SPY 2026-09-18 --a-atr 0.1 --c-atr 0.15 --confirm 15 --html spy.html
 
+# Nightly (after the close): S&P 500 daily bars -> next session's pivot ranges
+#   -> data/acd/pivots/pivot_ranges_<session>.csv
+python scripts/update_universe.py        # refresh the S&P 500 list (occasionally)
+python scripts/acd_nightly_pivots.py
+
 # Levels only (pivot range, OR, A/C) for several tickers
 python scripts/run_acd_day.py SPY QQQ IWM 2026-09-18 --levels-only --a-atr 0.1 --c-atr 0.15
 

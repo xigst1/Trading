@@ -7,6 +7,7 @@ request. Use scripts/download_data.py regularly to archive minute data locally.
 from __future__ import annotations
 
 import datetime as dt
+from typing import Dict, List
 
 import pandas as pd
 
@@ -52,6 +53,35 @@ class YFinanceProvider(MarketDataProvider):
 
     def get_minute_data(self, ticker: str, date: DateLike) -> pd.DataFrame:
         return self.get_intraday_range(ticker, date, date, "1m")
+
+    def get_daily_batch(self, tickers: List[str], start: DateLike, end: DateLike,
+                        chunk_size: int = 100) -> Dict[str, pd.DataFrame]:
+        """Daily bars for many tickers using yfinance's batched, threaded download.
+
+        Returns {ticker: standard daily frame}; tickers with no data are omitted.
+        """
+        import yfinance as yf
+
+        start_d, end_d = parse_date(start), parse_date(end)
+        out: Dict[str, pd.DataFrame] = {}
+        for i in range(0, len(tickers), chunk_size):
+            chunk = tickers[i:i + chunk_size]
+            raw = yf.download(chunk, start=start_d.isoformat(), end=(end_d + dt.timedelta(days=1)).isoformat(),
+                              interval="1d", group_by="ticker", auto_adjust=False, actions=False,
+                              threads=True, progress=False)
+            if raw is None or raw.empty:
+                continue
+            for ticker in chunk:
+                if isinstance(raw.columns, pd.MultiIndex):
+                    if ticker not in raw.columns.get_level_values(0):
+                        continue
+                    sub = raw[ticker]
+                else:
+                    sub = raw
+                sub = sub.dropna(subset=[c for c in ("Open", "High", "Low", "Close") if c in sub.columns])
+                if not sub.empty:
+                    out[ticker] = standardize_daily(sub)
+        return out
 
     def get_daily_data(self, ticker: str, start: DateLike, end: DateLike) -> pd.DataFrame:
         start_d, end_d = parse_date(start), parse_date(end)

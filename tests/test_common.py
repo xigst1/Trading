@@ -65,6 +65,17 @@ def test_local_store_round_trip_and_previous_day(tmp_path):
         provider.get_minute_data("SPY", "2026-09-17")
 
 
+def test_universe_symbols_and_cache(tmp_path):
+    from common.universe import load_sp500, sp500_path, sp500_tickers, to_yahoo_symbol
+
+    assert to_yahoo_symbol(" brk.b ") == "BRK-B"
+    path = sp500_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"symbol": ["AAPL", "XOM"], "sector": ["Information Technology", "Energy"]}).to_csv(path, index=False)
+    assert load_sp500(tmp_path, refresh_if_missing=False)["symbol"].tolist() == ["AAPL", "XOM"]
+    assert sp500_tickers(tmp_path, sector="energy") == ["XOM"]
+
+
 def test_save_minute_keeps_more_complete_file(tmp_path):
     store = LocalStore(tmp_path)
     full = day([(389, 100.0)])
