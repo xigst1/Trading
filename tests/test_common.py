@@ -65,6 +65,34 @@ def test_local_store_round_trip_and_previous_day(tmp_path):
         provider.get_minute_data("SPY", "2026-09-17")
 
 
+def test_universe_symbols_and_cache(tmp_path):
+    from common.universe import load_sp500, sp500_path, sp500_tickers, to_yahoo_symbol
+
+    assert to_yahoo_symbol(" brk.b ") == "BRK-B"
+    path = sp500_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"symbol": ["AAPL", "XOM"], "sector": ["Information Technology", "Energy"]}).to_csv(path, index=False)
+    assert load_sp500(tmp_path, refresh_if_missing=False)["symbol"].tolist() == ["AAPL", "XOM"]
+    assert sp500_tickers(tmp_path, sector="energy") == ["XOM"]
+
+
+def test_write_table_xlsx_has_filter_and_formats(tmp_path):
+    from openpyxl import load_workbook
+
+    from common.excel import write_table_xlsx
+
+    df = pd.DataFrame({"symbol": ["AAA", "BBB"], "or_outside_pr": [True, False], "or_high": [101.256, 99.5]})
+    path = write_table_xlsx(df, tmp_path / "scan.xlsx", sheet_name="scan", number_formats={"or_high": "#,##0.00"},
+                            column_fills={"or_high": "DDEBF7"})
+    ws = load_workbook(path)["scan"]
+    assert ws.auto_filter.ref == "A1:C3" and ws.freeze_panes == "B2"
+    assert [c.value for c in ws[2]] == ["AAA", True, 101.256]  # booleans stay real booleans for filtering
+    assert ws["C2"].number_format == "#,##0.00"
+    assert [ws[f"C{r}"].fill.start_color.rgb[-6:] for r in (1, 2, 3)] == ["DDEBF7"] * 3  # header + data
+    assert ws["A2"].fill.fill_type is None  # uncolored columns untouched
+    pd.testing.assert_frame_equal(pd.read_excel(path), df)
+
+
 def test_save_minute_keeps_more_complete_file(tmp_path):
     store = LocalStore(tmp_path)
     full = day([(389, 100.0)])
