@@ -219,3 +219,6 @@ __marimo__/
 
 # Local market data archive (see scripts/download_data.py)
 data/
+
+# macOS Finder metadata
+.DS_Store

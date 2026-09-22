@@ -26,17 +26,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd  # noqa: E402
 
-from acd.morning_scan import INTERNAL_COLUMNS, build_or_table, sort_scan  # noqa: E402
+from acd.morning_scan import add_size_columns, build_or_table, sort_scan  # noqa: E402
 from common.config import DATA_DIR  # noqa: E402
 from common.excel import write_table_xlsx  # noqa: E402
 from common.market_data import YFinanceProvider  # noqa: E402
 from common.sessions import MARKET_TZ, REGULAR_OPEN, market_timestamp  # noqa: E402
+from common.universe import load_sp500  # noqa: E402
 
 PIVOT_FILE = re.compile(r"pivot_ranges_(\d{4}-\d{2}-\d{2})\.csv$")  # full-universe files only
 INTERVALS = {"1m": 1, "2m": 2, "5m": 5, "15m": 15, "30m": 30}
 
+# Columns written to the .xlsx, in this order. Anything else the scan computes
+# (or_bars, expected_bars, other ATRs, ...) is left out of the file.
+OUTPUT_COLUMNS = [
+    "symbol", "name", "sector", "market_cap_rank", "mkt_cap_b", "shares_out_m", "avg_vol_3m_m", "date",
+    "a_up", "a_down", "c_up", "c_down",
+    "or_outside_pr", "or_vs_pr", "or_high", "or_low", "or_size", "incomplete_or",
+    "pr_low", "pr_high", "a_value", "c_value", "distance_from_pr", "atr14", "pivot_source_date",
+]
+
 # Column background colors in the .xlsx: OR columns, pivot-range columns, A/C levels.
-LIGHT_GREY, LIGHT_BLUE, LIGHT_GREEN = "EDEDED", "DDEBF7", "E2EFDA"
+OR_FILL, PR_FILL, AC_FILL = "D9D9D9", "BDD7EE", "C6E0B4"
 
 
 def latest_pivot_file(scan_date: dt.date) -> Path:
@@ -66,6 +76,7 @@ def print_side(df: pd.DataFrame, title: str) -> None:
     view = pd.DataFrame({
         "symbol": df["symbol"] + df["incomplete_or"].map({True: "*", False: ""}),
         "sector": df["sector"].fillna("").str.slice(0, 22),
+        "mcap(B)": df["mkt_cap_b"], "avgvol(M)": df["avg_vol_3m_m"],
         "OR low": df["or_low"], "OR high": df["or_high"],
         "PR low": df["pr_low"], "PR high": df["pr_high"],
         "A-Up": df["a_up"], "A-Down": df["a_down"], "C-Up": df["c_up"], "C-Down": df["c_down"],
@@ -118,16 +129,31 @@ def main(argv=None) -> int:
         return 1
     table = sort_scan(table)
 
+    try:
+        universe = load_sp500(refresh_if_missing=False)
+    except FileNotFoundError:
+        universe = pd.DataFrame({"symbol": []})
+    if "market_cap" in universe.columns:
+        as_of = universe["fundamentals_as_of"].dropna().iloc[0] if "fundamentals_as_of" in universe.columns else "?"
+        print(f"  market cap / shares / volume from sp500.csv (fetched {as_of})")
+    else:
+        print("  WARNING: sp500.csv has no market cap data; run scripts/update_universe.py tonight. "
+              "Size columns will be empty.")
+    table = add_size_columns(table, universe)
+
     out_dir = DATA_DIR / "acd" / "morning"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"or_scan_{scan_date}.xlsx"
-    output = table.drop(columns=INTERNAL_COLUMNS).round(4)
-    prices = ["or_high", "or_low", "or_size", "pr_low", "pr_high", "a_value", "c_value",
-              "a_up", "a_down", "c_up", "c_down", "distance_from_pr", "atr5", "atr10", "atr14", "atr20"]
+    atr_col = f"atr{args.atr_period}"  # show the ATR that A and C were built from
+    columns = [atr_col if c == "atr14" else c for c in OUTPUT_COLUMNS]
+    output = table[columns].round(4)
+    prices = ["mkt_cap_b", "shares_out_m", "avg_vol_3m_m", "a_up", "a_down", "c_up", "c_down",
+              "or_high", "or_low", "or_size", "pr_low", "pr_high", "a_value", "c_value",
+              "distance_from_pr", atr_col]
     fills = {
-        **{c: LIGHT_GREY for c in output.columns if c.startswith("or_")},
-        **{c: LIGHT_BLUE for c in ("pr_low", "pr_high", "pivot_source_date")},
-        **{c: LIGHT_GREEN for c in ("a_up", "a_down", "c_up", "c_down")},
+        **{c: OR_FILL for c in output.columns if c.startswith("or_")},
+        **{c: PR_FILL for c in ("pr_low", "pr_high", "pivot_source_date")},
+        **{c: AC_FILL for c in ("a_up", "a_down", "c_up", "c_down")},
     }
     write_table_xlsx(output, out_path, sheet_name=f"OR scan {scan_date}",
                      number_formats={c: "#,##0.00" for c in prices}, column_fills=fills)

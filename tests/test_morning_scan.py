@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from acd.levels import OpeningRange, calculate_daily_pivot_range, calculate_opening_range
-from acd.morning_scan import build_or_table, sort_scan
+from acd.morning_scan import add_size_columns, build_or_table, sort_scan
 from acd.signals import or_vs_pivot_range
 from tests.synthetic import DATE, day
 
@@ -82,6 +82,45 @@ def test_or_vs_pivot_range_edges():
     assert or_vs_pivot_range(mk(100.5, 102), pr) == "ABOVE"
     assert or_vs_pivot_range(mk(98, 99.5), pr) == "BELOW"
     assert or_vs_pivot_range(mk(100, 102), pr) == "OVERLAPPING"  # touching counts as overlap
+
+
+def test_size_columns_joined_in_billions_and_millions():
+    table, _ = build_or_table({"AAA": FIVE, "BBB": FIVE}, pivots(["AAA", "BBB"]), D)
+    universe = pd.DataFrame({"symbol": ["AAA"], "market_cap_rank": [7], "market_cap": [2.5e12],
+                             "shares_outstanding": [1.5e9], "avg_volume_3m": [4.2e7], "avg_volume_10d": [3.9e7]})
+    out = add_size_columns(table, universe)
+    cols = list(out.columns)
+    assert cols[cols.index("sector") + 1: cols.index("sector") + 6] == [
+        "market_cap_rank", "mkt_cap_b", "shares_out_m", "avg_vol_3m_m", "avg_vol_10d_m"]
+    a = out.set_index("symbol").loc["AAA"]
+    assert (a["market_cap_rank"], a["mkt_cap_b"], a["shares_out_m"]) == (7, 2500.0, 1500.0)
+    assert (a["avg_vol_3m_m"], a["avg_vol_10d_m"]) == (42.0, 39.0)
+    assert out.set_index("symbol").loc["BBB", ["mkt_cap_b", "avg_vol_3m_m"]].isna().all()  # not in universe
+    assert len(out) == len(table)  # no rows lost
+
+
+def test_size_columns_empty_when_universe_has_no_market_cap():
+    table, _ = build_or_table({"AAA": FIVE}, pivots(["AAA"]), D)
+    out = add_size_columns(table, pd.DataFrame({"symbol": ["AAA"], "name": ["A"]}))
+    assert out[["market_cap_rank", "mkt_cap_b", "shares_out_m"]].isna().all().all()
+
+
+def test_script_output_columns_exist_in_scan_table():
+    """Guards the hand-written column order in scripts/acd_morning_or_scan.py against typos."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "scripts" / "acd_morning_or_scan.py"
+    spec = importlib.util.spec_from_file_location("acd_morning_or_scan", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    table, _ = build_or_table({"AAA": FIVE}, pivots(["AAA"]), D)
+    table = add_size_columns(sort_scan(table), pd.DataFrame({"symbol": ["AAA"]}))
+    assert set(script.OUTPUT_COLUMNS) <= set(table.columns)
+    assert len(script.OUTPUT_COLUMNS) == len(set(script.OUTPUT_COLUMNS)) == 25
+    cols = script.OUTPUT_COLUMNS
+    assert cols[cols.index("date") + 1: cols.index("or_outside_pr")] == ["a_up", "a_down", "c_up", "c_down"]
 
 
 def test_interval_must_divide_or():

@@ -13,7 +13,7 @@ from typing import Dict, List
 import pandas as pd
 
 from common.market_data.base import DataUnavailableError, MarketDataProvider
-from common.sessions import DateLike, parse_date, standardize_daily, standardize_ohlcv
+from common.sessions import MARKET_TZ, DateLike, parse_date, standardize_daily, standardize_ohlcv
 
 # Yahoo rejects 1m requests spanning more than 8 days; stay under it.
 MAX_MINUTE_SPAN_DAYS = 7
@@ -123,6 +123,45 @@ class YFinanceProvider(MarketDataProvider):
             if not sub.empty:
                 out[ticker] = standardize_ohlcv(sub)
         return out
+
+    # Yahoo quote-summary field -> our column name.
+    FUNDAMENTAL_FIELDS = {
+        "marketCap": "market_cap",  # whole company, even for one share class (GOOGL and GOOG both)
+        "sharesOutstanding": "shares_outstanding",  # this share class
+        "impliedSharesOutstanding": "implied_shares_outstanding",  # all classes combined
+        "floatShares": "float_shares",
+        "averageVolume": "avg_volume_3m",
+        "averageVolume10days": "avg_volume_10d",
+        "regularMarketPrice": "price",
+    }
+
+    def get_fundamentals(self, tickers: List[str], workers: int = 8, retry_wait_seconds: float = 2.0) -> pd.DataFrame:
+        """Latest market cap, shares and average volume per ticker from Yahoo (one request
+        each, ``workers`` in parallel, one retry on failure). Missing values are NaN."""
+        import yfinance as yf
+        from concurrent.futures import ThreadPoolExecutor
+
+        def fetch(ticker: str) -> Dict:
+            for attempt in range(2):
+                try:
+                    info = yf.Ticker(ticker).info or {}
+                    if info.get("marketCap") is not None:
+                        break
+                except Exception:
+                    info = {}
+                if attempt == 0:
+                    time.sleep(retry_wait_seconds)
+            row = {"symbol": ticker}
+            row.update({ours: info.get(theirs) for theirs, ours in self.FUNDAMENTAL_FIELDS.items()})
+            return row
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            rows = list(pool.map(fetch, tickers))
+        df = pd.DataFrame(rows)
+        numeric = list(self.FUNDAMENTAL_FIELDS.values())
+        df[numeric] = df[numeric].apply(pd.to_numeric, errors="coerce")
+        df["fundamentals_as_of"] = pd.Timestamp.now(MARKET_TZ).strftime("%Y-%m-%d %H:%M %Z")
+        return df
 
     def get_daily_data(self, ticker: str, start: DateLike, end: DateLike) -> pd.DataFrame:
         start_d, end_d = parse_date(start), parse_date(end)
