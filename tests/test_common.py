@@ -76,6 +76,29 @@ def test_universe_symbols_and_cache(tmp_path):
     assert sp500_tickers(tmp_path, sector="energy") == ["XOM"]
 
 
+def test_sp500_with_fundamentals_ranks_companies(monkeypatch):
+    import common.universe as universe
+
+    listing = pd.DataFrame({"symbol": ["AAPL", "GOOG", "GOOGL", "XYZ", "NEW"], "name": list("abcde"),
+                            "sector": ["IT", "CS", "CS", "IT", "IT"], "cik": [1, 2, 2, 3, 4]})
+    monkeypatch.setattr(universe, "fetch_sp500_list", lambda: listing)
+
+    class FakeProvider:
+        def get_fundamentals(self, tickers):
+            caps = {"AAPL": 5e12, "GOOG": 4.24e12, "GOOGL": 4.30e12, "XYZ": 1e10, "NEW": None}
+            return pd.DataFrame({"symbol": tickers, "market_cap": [caps[t] for t in tickers],
+                                 "shares_outstanding": 1.0, "implied_shares_outstanding": 1.0, "float_shares": 1.0,
+                                 "avg_volume_3m": 1000.0, "avg_volume_10d": 900.0, "price": 10.0})
+
+    df = universe.fetch_sp500(provider=FakeProvider())
+    ranks = dict(zip(df["symbol"], df["market_cap_rank"]))
+    # Both Alphabet classes share rank 2; the next company is 3, not 4. No cap -> no rank, listed last.
+    assert ranks["AAPL"] == 1 and ranks["GOOG"] == 2 and ranks["GOOGL"] == 2 and ranks["XYZ"] == 3
+    assert pd.isna(ranks["NEW"]) and df["symbol"].iloc[-1] == "NEW"
+    assert df["avg_dollar_volume_3m"].iloc[0] == 10_000.0
+    assert list(df.columns[:4]) == ["symbol", "name", "sector", "market_cap_rank"]
+
+
 def test_write_table_xlsx_has_filter_and_formats(tmp_path):
     from openpyxl import load_workbook
 

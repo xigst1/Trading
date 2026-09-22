@@ -46,7 +46,7 @@ python scripts/run_acd_day.py SPY 2026-09-18 --a-atr 0.1 --c-atr 0.15 --confirm 
 
 # Nightly (after the close): S&P 500 daily bars -> next session's pivot ranges
 #   -> data/acd/pivots/pivot_ranges_<session>.csv
-python scripts/update_universe.py        # refresh the S&P 500 list (occasionally)
+python scripts/update_universe.py        # S&P 500 list + market cap, shares, avg volume, market-cap rank
 python scripts/acd_nightly_pivots.py
 
 # Morning (after the 20-min OR, from 09:51 ET / 06:51 PT): ORs vs pivot ranges, A/C levels

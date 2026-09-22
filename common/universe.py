@@ -1,7 +1,8 @@
 """Ticker universes (e.g. S&P 500 constituents) for scans across many stocks.
 
-The S&P 500 list is scraped from Wikipedia and cached as data/universe/sp500.csv.
-Symbols are converted to Yahoo format (BRK.B -> BRK-B).
+The S&P 500 list is scraped from Wikipedia and cached as data/universe/sp500.csv, with
+the latest market cap, shares outstanding and average volume from Yahoo and a market-cap
+rank. Symbols are converted to Yahoo format (BRK.B -> BRK-B).
 """
 
 from __future__ import annotations
@@ -29,7 +30,46 @@ def to_yahoo_symbol(symbol: str) -> str:
     return symbol.strip().upper().replace(".", "-")
 
 
-def fetch_sp500() -> pd.DataFrame:
+SIZE_COLUMNS = [
+    "market_cap_rank", "market_cap", "shares_outstanding", "implied_shares_outstanding", "float_shares",
+    "avg_volume_3m", "avg_volume_10d", "avg_dollar_volume_3m", "price",
+]
+
+
+def add_market_cap_rank(df: pd.DataFrame) -> pd.DataFrame:
+    """Rank companies by market cap, largest = 1.
+
+    Yahoo reports the whole company's market cap on every share class (GOOGL and GOOG
+    both show Alphabet's total), so classes of one company (same CIK) share one rank
+    instead of taking two places. Tickers without a market cap get no rank.
+    """
+    out = df.copy()
+    company = out["cik"] if "cik" in out.columns else out["symbol"]
+    company_cap = out.groupby(company)["market_cap"].transform("max")
+    out["market_cap_rank"] = company_cap.rank(method="dense", ascending=False).astype("Int64")
+    return out
+
+
+def fetch_sp500(with_fundamentals: bool = True, provider=None) -> pd.DataFrame:
+    """Current constituents from Wikipedia, optionally with Yahoo market cap, shares and
+    average volume, ranked by market cap (largest first)."""
+    table = fetch_sp500_list()
+    if not with_fundamentals:
+        return table
+    if provider is None:
+        from common.market_data import YFinanceProvider
+
+        provider = YFinanceProvider()
+    fundamentals = provider.get_fundamentals(table["symbol"].tolist())
+    table = table.merge(fundamentals, on="symbol", how="left")
+    table["avg_dollar_volume_3m"] = table["price"] * table["avg_volume_3m"]
+    table = add_market_cap_rank(table)
+    first = ["symbol", "name", "sector"] + SIZE_COLUMNS
+    table = table[first + [c for c in table.columns if c not in first]]
+    return table.sort_values(["market_cap_rank", "symbol"], na_position="last").reset_index(drop=True)
+
+
+def fetch_sp500_list() -> pd.DataFrame:
     """Current constituents from Wikipedia: symbol, name, sector, sub_industry, cik, date_added."""
     request = urllib.request.Request(SP500_URL, headers=_HEADERS)
     with urllib.request.urlopen(request, timeout=30) as response:
@@ -44,9 +84,9 @@ def fetch_sp500() -> pd.DataFrame:
     return table[cols].sort_values("symbol").reset_index(drop=True)
 
 
-def refresh_sp500(root: Union[str, Path, None] = None) -> pd.DataFrame:
-    """Fetch the list and save it; returns the frame."""
-    df = fetch_sp500()
+def refresh_sp500(root: Union[str, Path, None] = None, with_fundamentals: bool = True) -> pd.DataFrame:
+    """Fetch the list (with market cap etc. unless disabled) and save it; returns the frame."""
+    df = fetch_sp500(with_fundamentals)
     path = sp500_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)

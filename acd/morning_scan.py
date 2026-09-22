@@ -22,8 +22,6 @@ COLUMNS = [
     "pr_low", "pr_high", "a_value", "c_value", "a_up", "a_down", "c_up", "c_down",
     "distance_from_pr", "distance_atr", "atr5", "atr10", "atr14", "atr20", "pivot_source_date",
 ]
-# Used for sorting only; not written to the output file.
-INTERNAL_COLUMNS = ["distance_atr"]
 
 
 def build_or_table(
@@ -79,6 +77,32 @@ def build_or_table(
 
     table = pd.DataFrame(rows, columns=COLUMNS)
     return table, missing
+
+
+# sp500.csv column -> (morning scan column, divisor). Values are shown in billions / millions.
+SIZE_COLUMNS = {
+    "market_cap_rank": ("market_cap_rank", 1),
+    "market_cap": ("mkt_cap_b", 1e9),
+    "shares_outstanding": ("shares_out_m", 1e6),
+    "avg_volume_3m": ("avg_vol_3m_m", 1e6),
+    "avg_volume_10d": ("avg_vol_10d_m", 1e6),
+}
+
+
+def add_size_columns(table: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFrame:
+    """Join market-cap rank, market cap (B), shares outstanding (M) and average daily volume
+    (M shares) from the universe file on symbol; placed right after ``sector``. Columns the
+    universe file lacks come out empty."""
+    size = pd.DataFrame({"symbol": universe["symbol"]})
+    for source, (target, divisor) in SIZE_COLUMNS.items():
+        size[target] = universe[source] / divisor if source in universe.columns else float("nan")
+    out = table.merge(size, on="symbol", how="left")
+    targets = [target for target, _ in SIZE_COLUMNS.values()]
+    base = [c for c in table.columns if c not in targets]
+    at = base.index("sector") + 1
+    out = out[base[:at] + targets + base[at:]]
+    out["market_cap_rank"] = out["market_cap_rank"].astype("Int64")
+    return out
 
 
 def sort_scan(table: pd.DataFrame) -> pd.DataFrame:
