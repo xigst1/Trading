@@ -25,7 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd  # noqa: E402
 
-from acd.pivot_scan import build_pivot_table, last_completed_session_cutoff  # noqa: E402
+from acd.pivot_scan import (build_pivot_table, last_completed_session_cutoff, patch_missing_session,  # noqa: E402
+                            symbols_missing_session)
 from common.config import DATA_DIR  # noqa: E402
 from common.market_data import LocalStore, YFinanceProvider  # noqa: E402
 from common.universe import load_sp500, refresh_sp500  # noqa: E402
@@ -41,6 +42,9 @@ def main(argv=None) -> int:
     parser.add_argument("--history-days", type=int, default=150, help="Calendar days of daily history (for ATR)")
     parser.add_argument("--no-archive", action="store_true", help="Don't merge daily bars into data/daily/")
     parser.add_argument("--out-dir", default=None, help="Default: data/acd/pivots")
+    parser.add_argument("--no-intraday-fallback", action="store_true",
+                        help="Don't rebuild a missing latest daily bar from intraday bars")
+    parser.add_argument("--fallback-interval", default="5m", help="Bar size for that rebuild (default 5m)")
     args = parser.parse_args(argv)
 
     universe = refresh_sp500() if args.refresh_universe else load_sp500()
@@ -58,10 +62,24 @@ def main(argv=None) -> int:
     start = as_of - dt.timedelta(days=args.history_days)
     print(f"Fetching daily bars for {len(tickers)} tickers, {start} .. {as_of} ...")
     t0 = time.time()
-    daily = YFinanceProvider().get_daily_batch(tickers, start, as_of)
+    provider = YFinanceProvider()
+    rebuilt = []
+    daily = provider.get_daily_batch(tickers, start, as_of)
     print(f"  got {len(daily)}/{len(tickers)} tickers in {time.time() - t0:.1f}s")
 
+    # Yahoo's daily row for the latest session sometimes has a NaN close for hours after
+    # the close, which would silently leave the whole run a session behind.
+    stale = symbols_missing_session(daily, as_of)
+    if stale and as_of.weekday() < 5 and not args.no_intraday_fallback:
+        print(f"  no daily bar for {as_of} on {len(stale)} tickers; rebuilding it from {args.fallback_interval} bars ...")
+        session_bars = provider.get_session_bars_from_intraday(stale, as_of, args.fallback_interval)
+        rebuilt = patch_missing_session(daily, session_bars, as_of)
+        print(f"  rebuilt {len(rebuilt)}/{len(stale)}"
+              + ("; their close is the last regular-session bar, not the closing auction "
+                 "(session_rebuilt = True)" if rebuilt else " (market holiday, or no intraday data)"))
+
     table, errors = build_pivot_table(daily, as_of, universe)
+    table["session_rebuilt"] = table["symbol"].isin(rebuilt)
     missing = sorted(set(tickers) - set(daily) | set(errors))
     if table.empty:
         print("No pivot ranges computed.", file=sys.stderr)
@@ -85,6 +103,9 @@ def main(argv=None) -> int:
         for symbol, df in daily.items():
             store.save_daily(symbol, df)
 
+    if dt.date.fromisoformat(source_date) < as_of and as_of.weekday() < 5:
+        print(f"\nWARNING: expected the {as_of} session but the newest data is {source_date}. "
+              f"If {as_of} was a trading day, rerun later - Yahoo may not have published it yet.")
     print(f"\nPivot ranges from the {source_date} session (for the next session) -> {out_path}")
     print(f"  {len(table)} tickers, {int(table['stale'].sum())} stale (last bar before {source_date}), "
           f"{len(missing)} missing")

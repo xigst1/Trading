@@ -44,6 +44,32 @@ def last_completed_session_cutoff(now: Optional[pd.Timestamp] = None) -> dt.date
     return now.date() - dt.timedelta(days=1)
 
 
+def symbols_missing_session(daily_by_symbol: Dict[str, pd.DataFrame], session: dt.date) -> List[str]:
+    """Tickers whose newest daily bar is older than ``session``."""
+    return [s for s, df in daily_by_symbol.items()
+            if df.empty or df.index[-1].date() < session]
+
+
+def patch_missing_session(daily_by_symbol: Dict[str, pd.DataFrame], session_bars: Dict[str, pd.DataFrame],
+                          session: dt.date) -> List[str]:
+    """Append rebuilt daily bars (see YFinanceProvider.get_session_bars_from_intraday) for
+    tickers still missing ``session``. Returns the symbols patched; existing bars are never
+    overwritten.
+
+    A rebuilt close is the last regular-session bar, not the 16:00 closing auction print,
+    so it can differ by a few cents (measured: up to 0.13 on mega caps, moving the pivot by
+    a third of that). Callers should mark these rows - the nightly job sets session_rebuilt.
+    """
+    patched = []
+    for symbol in symbols_missing_session(daily_by_symbol, session):
+        bar = session_bars.get(symbol)
+        if bar is None or bar.empty or bar.index[-1].date() != session:
+            continue
+        daily_by_symbol[symbol] = pd.concat([daily_by_symbol[symbol], bar]).sort_index()
+        patched.append(symbol)
+    return patched
+
+
 def pivot_row(symbol: str, daily: pd.DataFrame, as_of: dt.date) -> Dict:
     history = daily[daily.index <= pd.Timestamp(as_of)]
     if history.empty:

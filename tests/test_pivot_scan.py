@@ -3,7 +3,8 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from acd.pivot_scan import build_pivot_table, last_completed_session_cutoff
+from acd.pivot_scan import (build_pivot_table, last_completed_session_cutoff, patch_missing_session,
+                            symbols_missing_session)
 from common.indicators import atr
 from common.sessions import standardize_daily
 
@@ -45,6 +46,30 @@ def test_stale_flag_errors_and_metadata():
     assert set(table["symbol"]) == {"AAA", "BBB", "OLD"} and "EMPTY" in errors
     assert table.set_index("symbol")["stale"].to_dict() == {"AAA": False, "BBB": False, "OLD": True}
     assert table.set_index("symbol").loc["AAA", "name"] == "A Co"
+
+
+def session_bar(date, high, low, close):
+    return pd.DataFrame([{"open": low, "high": high, "low": low, "close": close, "volume": 1.0}],
+                        index=pd.DatetimeIndex([pd.Timestamp(date)], name="date"))
+
+
+def test_patch_missing_session_only_fills_gaps():
+    data = {"STALE": daily(end="2026-09-21"), "FRESH": daily(end="2026-09-22"), "NOBARS": daily(end="2026-09-21")}
+    assert symbols_missing_session(data, dt.date(2026, 9, 22)) == ["STALE", "NOBARS"]
+
+    fresh_before = data["FRESH"].copy()
+    bars = {"STALE": session_bar("2026-09-22", 150.0, 140.0, 148.0),
+            "FRESH": session_bar("2026-09-22", 1.0, 1.0, 1.0),  # must be ignored: already has the session
+            "NOBARS": session_bar("2026-09-19", 1.0, 1.0, 1.0)}  # wrong date: ignored
+    assert patch_missing_session(data, bars, dt.date(2026, 9, 22)) == ["STALE"]
+    pd.testing.assert_frame_equal(data["FRESH"], fresh_before)
+    assert data["STALE"].index[-1].date() == dt.date(2026, 9, 22)
+    assert symbols_missing_session(data, dt.date(2026, 9, 22)) == ["NOBARS"]
+
+    # The patched bar is what the pivot range is then built from.
+    row = build_pivot_table({"STALE": data["STALE"]}, dt.date(2026, 9, 22))[0].iloc[0]
+    assert (row["prev_high"], row["prev_low"], row["prev_close"]) == (150.0, 140.0, 148.0)
+    assert row["pivot"] == pytest.approx((150 + 140 + 148) / 3)
 
 
 def test_session_cutoff_before_and_after_close():

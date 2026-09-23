@@ -13,7 +13,8 @@ from typing import Dict, List
 import pandas as pd
 
 from common.market_data.base import DataUnavailableError, MarketDataProvider
-from common.sessions import MARKET_TZ, DateLike, parse_date, standardize_daily, standardize_ohlcv
+from common.sessions import (MARKET_TZ, DateLike, filter_regular_session, parse_date, standardize_daily,
+                             standardize_ohlcv)
 
 # Yahoo rejects 1m requests spanning more than 8 days; stay under it.
 MAX_MINUTE_SPAN_DAYS = 7
@@ -122,6 +123,30 @@ class YFinanceProvider(MarketDataProvider):
             sub = sub.dropna(subset=[c for c in ("Open", "High", "Low", "Close") if c in sub.columns])
             if not sub.empty:
                 out[ticker] = standardize_ohlcv(sub)
+        return out
+
+    def get_session_bars_from_intraday(self, tickers: List[str], date: DateLike,
+                                       interval: str = "5m") -> Dict[str, pd.DataFrame]:
+        """Build one daily bar per ticker from that session's intraday bars.
+
+        Yahoo sometimes serves a daily row whose close is still NaN hours after the close,
+        while the intraday data for the same session is complete. Aggregating the regular
+        session (open = first, high/low = extremes, close = last, volume = sum) reproduces
+        the daily bar the pivot range needs.
+        """
+        day = parse_date(date)
+        out: Dict[str, pd.DataFrame] = {}
+        for ticker, bars in self.get_intraday_batch(tickers, day, interval).items():
+            session = filter_regular_session(bars)
+            session = session[session.index.date == day]
+            if session.empty:
+                continue
+            out[ticker] = pd.DataFrame(
+                [{"open": float(session["open"].iloc[0]), "high": float(session["high"].max()),
+                  "low": float(session["low"].min()), "close": float(session["close"].iloc[-1]),
+                  "volume": float(session["volume"].sum())}],
+                index=pd.DatetimeIndex([pd.Timestamp(day)], name="date"),
+            )
         return out
 
     # Yahoo quote-summary field -> our column name.
