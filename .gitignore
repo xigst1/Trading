@@ -222,3 +222,6 @@ data/
 
 # macOS Finder metadata
 .DS_Store
+
+# Generated stock news reports (stock-news-report skill)
+reports/
