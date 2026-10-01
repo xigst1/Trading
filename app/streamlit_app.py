@@ -196,7 +196,7 @@ def page_agent():
     st.caption("Ask for prices, ATR, ACD levels or a one-day ACD simulation. Runs Claude with local tools; "
                "needs the `anthropic` package and an API key (ANTHROPIC_API_KEY) or `ant auth login`.")
     try:
-        from agent.agent import TradingAgent
+        from agent.agent import MODELS, DEFAULT_MODEL_KEY, TradingAgent
         import anthropic
     except ImportError as exc:
         st.error(f"Agent unavailable: {exc}. Install it with `pip install anthropic`.")
@@ -205,8 +205,24 @@ def page_agent():
     if "chat" not in st.session_state:
         st.session_state.chat = []  # what the UI shows
         st.session_state.agent_history = []  # what the API sees
+        st.session_state.session_cost = 0.0
+
+    keys = list(MODELS)
+    choice_key = st.selectbox(
+        "Model", keys, index=keys.index(DEFAULT_MODEL_KEY),
+        format_func=lambda k: MODELS[k].label,
+        help="Cost per question scales with the model. Tool results are sent back as input "
+             "tokens, so a long ACD event log costs more than a short question.",
+    )
+    chosen = MODELS[choice_key]
+    st.caption(f"{chosen.note} ${chosen.input_per_mtok:.0f} per million input tokens, "
+               f"${chosen.output_per_mtok:.0f} per million output.")
+
     if st.sidebar.button("Clear conversation"):
         st.session_state.chat, st.session_state.agent_history = [], []
+        st.session_state.session_cost = 0.0
+    if st.session_state.session_cost:
+        st.sidebar.metric("Session cost (estimated)", f"${st.session_state.session_cost:.3f}")
 
     for i, msg in enumerate(st.session_state.chat):
         with st.chat_message(msg["role"]):
@@ -222,7 +238,7 @@ def page_agent():
     with st.chat_message("assistant"):
         try:
             with st.spinner("Thinking..."):
-                agent = TradingAgent(provider_for(source))
+                agent = TradingAgent(provider_for(source), model=choice_key)
                 reply, history = agent.ask(question, st.session_state.agent_history)
         except anthropic.AuthenticationError:
             st.error("Authentication failed. Set ANTHROPIC_API_KEY or run `ant auth login`.")
@@ -237,8 +253,9 @@ def page_agent():
             st.error(f"API error {exc.status_code}: {exc.message}")
             return
         st.session_state.agent_history = history
+        st.session_state.session_cost += reply.usage.cost_usd
         msg = {"role": "assistant", "text": reply.text, "figures": reply.figures, "tables": reply.tables,
-               "tool_calls": reply.tool_calls}
+               "tool_calls": reply.tool_calls, "usage": reply.usage.summary()}
         st.session_state.chat.append(msg)
         _render_message(msg, len(st.session_state.chat) - 1)
 
@@ -253,6 +270,8 @@ def _render_message(msg, idx):
     if msg.get("tool_calls"):
         with st.expander("Tool calls"):
             st.json(msg["tool_calls"])
+    if msg.get("usage"):
+        st.caption(msg["usage"])
 
 
 def page_turtle():
