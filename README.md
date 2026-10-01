@@ -33,7 +33,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-For the agent, set `ANTHROPIC_API_KEY` or run `ant auth login`. The agent uses `claude-opus-5` with the server-side refusal fallback enabled.
+For the agent, set `ANTHROPIC_API_KEY` or run `ant auth login`. The Agent page has a model dropdown — high (`claude-opus-5`), medium (`claude-sonnet-5`, the default) or low (`claude-haiku-4-5`) cost — and shows the estimated cost of each answer plus a session total. API usage is billed to your Anthropic Console credits, separately from any Claude subscription.
 
 ## Usage
 
