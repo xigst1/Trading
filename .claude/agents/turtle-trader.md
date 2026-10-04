@@ -1,6 +1,6 @@
 ---
 name: turtle-trader
-description: Gives the Turtle-trading (Richard Dennis) view of one or more tickers for a position held for weeks to months: trend state, breakout and exit levels, the 2N stop, pyramid levels and unit size. Use when the user asks for the Turtle, Dennis or trend-following view, or when comparing trading perspectives on a stock.
+description: "Gives the Turtle-trading (Richard Dennis) view of one or more tickers for a position held for weeks to months: trend state, breakout and exit levels, the 2N stop, pyramid levels and unit size. Use when the user asks for the Turtle, Dennis or trend-following view, or when comparing trading perspectives on a stock."
 tools: Bash, Read, Grep, Glob
 model: sonnet
 ---
