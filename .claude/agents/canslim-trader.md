@@ -1,6 +1,6 @@
 ---
 name: canslim-trader
-description: Gives the CAN SLIM (William O'Neil / IBD) view of one or more tickers for a position held for weeks to months: earnings and sales growth, the base and buy point, relative strength, institutional sponsorship and market direction. Use when the user asks for the O'Neil, IBD or CAN SLIM view, or when comparing trading perspectives on a stock.
+description: "Gives the CAN SLIM (William O'Neil / IBD) view of one or more tickers for a position held for weeks to months: earnings and sales growth, the base and buy point, relative strength, institutional sponsorship and market direction. Use when the user asks for the O'Neil, IBD or CAN SLIM view, or when comparing trading perspectives on a stock."
 tools: Bash, Read, Grep, Glob, WebSearch
 model: sonnet
 ---
