@@ -64,3 +64,15 @@ python -m pytest
 ```
 
 Set `TRADING_DATA_DIR` to keep the data archive somewhere other than `./data`.
+
+## Perspective agents (Claude Code)
+
+Three subagents in `.claude/agents/` each apply one investor's published rules to a ticker. Each runs a script that prints the numbers as JSON, then reports hold / add / exit in its own terms. They are rule-based screens, not investment advice, and they cannot reproduce anyone's judgment.
+
+| Agent | Perspective | Uses | Script |
+|---|---|---|---|
+| `turtle-trader` | Richard Dennis: price-only trend following, breakout and 2N stop | daily bars | `scripts/turtle_view.py` |
+| `canslim-trader` | William O'Neil: earnings growth, base and buy point, relative strength, market direction | daily bars, Yahoo fundamentals, a few searches | `scripts/canslim_view.py` |
+| `link-investor` | Stephanie Link (Hightower), inferred from her public interviews: quality on sale, forward P/E against growth, operating-margin direction | daily bars, Yahoo fundamentals, a few searches | `scripts/link_view.py` |
+
+Start a new Claude Code session so the agents load, then ask, for example: "Run turtle-trader, canslim-trader and link-investor on SPCX and compare." Running them as subagents uses the same login as the session (your subscription, or API credits if you logged in with the API).
