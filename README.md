@@ -53,6 +53,13 @@ python scripts/acd_nightly_pivots.py
 #   -> data/acd/morning/or_scan_<date>.xlsx, all stocks; or_outside_pr = OR fully above/below PR
 python scripts/acd_morning_or_scan.py
 
+# By hand, any time from 10:00 ET / 07:00 PT (after the 09:30-09:50 OR): keep only stocks whose latest 2+ five-minute bars
+#   in a row (the one still in progress counts) are entirely above A-Up or entirely below A-Down; bars_checked is the
+#   actual run length counted back from the latest bar -> data/acd/morning/post_or_hold_<date>_<HHMM>.xlsx.
+#   Close or_scan_<date>.xlsx in Excel first.
+#   Options: --last-bars 3 (minimum run; 0 = back to 09:55), --completed-only, --date D --as-of 11:36 (replay a past session)
+python scripts/acd_post_or_filter.py
+
 # Levels only (pivot range, OR, A/C) for several tickers
 python scripts/run_acd_day.py SPY QQQ IWM 2026-09-18 --levels-only --a-atr 0.1 --c-atr 0.15
 
