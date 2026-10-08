@@ -225,3 +225,7 @@ data/
 
 # Generated stock news reports (stock-news-report skill)
 reports/
+
+# Moving-average charts: watchlist (personal) and generated charts
+config/watchlist.json
+linechart/

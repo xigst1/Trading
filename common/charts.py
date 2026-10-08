@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Dict, Optional, Sequence
 
 import pandas as pd
@@ -112,3 +113,81 @@ def line_figure(series: Dict[str, pd.Series], title: str = "", y_title: str = ""
                       showlegend=len(series) > 1)
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
     return fig
+
+
+def price_sma_slope_stack(frame: pd.DataFrame, ticker: str, windows=(5, 20, 50),
+                          use_pct: bool = False, height: Optional[int] = None) -> go.Figure:
+    """One row per moving-average window: price and the SMA on the left axis, that SMA's
+    day-over-day change on the right axis with a dotted zero line.
+
+    Rows share the x-axis so they zoom together. Within a row the two y-axes are scaled
+    independently, so the slope line's height relative to the price lines means nothing -
+    read only its sign and shape. Above the zero line the average is rising, below it falling.
+
+    ``frame`` comes from common.moving_averages.moving_average_frame: a date index with
+    close, SMA_<n>, SMA_<n>_d1 and SMA_<n>_d1_pct columns.
+    """
+    price_color, sma_color, slope_color = "#4c5561", PALETTE["blue"], PALETTE["orange"]
+    slope_units = "percent per day" if use_pct else "price per day"
+
+    for window in windows:
+        needed = [f"SMA_{window}", f"SMA_{window}_d1_pct" if use_pct else f"SMA_{window}_d1"]
+        missing = [c for c in needed if c not in frame.columns]
+        if missing:
+            raise KeyError(f"{missing} not in frame; compute them before plotting")
+
+    fig = make_subplots(rows=len(windows), cols=1, shared_xaxes=True, vertical_spacing=0.045,
+                        specs=[[{"secondary_y": True}] for _ in windows],
+                        subplot_titles=[f"SMA_{w}" for w in windows])
+
+    for row, window in enumerate(windows, start=1):
+        sma_col = f"SMA_{window}"
+        slope_col = f"{sma_col}_d1_pct" if use_pct else f"{sma_col}_d1"
+        first_row = row == 1
+
+        fig.add_trace(go.Scatter(x=frame.index, y=frame["close"], mode="lines", name="Close",
+                                 legendgroup="price", showlegend=first_row,
+                                 line=dict(width=2, color=price_color),
+                                 hovertemplate="Close: %{y:.2f}<extra></extra>"),
+                      row=row, col=1, secondary_y=False)
+        fig.add_trace(go.Scatter(x=frame.index, y=frame[sma_col], mode="lines", name="SMA",
+                                 legendgroup="sma", showlegend=first_row,
+                                 line=dict(width=2, color=sma_color),
+                                 hovertemplate=f"{sma_col}: %{{y:.2f}}<extra></extra>"),
+                      row=row, col=1, secondary_y=False)
+        fig.add_trace(go.Scatter(x=frame.index, y=frame[slope_col], mode="lines",
+                                 name="SMA daily change (right axis)", legendgroup="slope",
+                                 showlegend=first_row, line=dict(width=2, color=slope_color),
+                                 hovertemplate=f"{slope_col}: %{{y:.3f}}<extra></extra>"),
+                      row=row, col=1, secondary_y=True)
+        fig.add_hline(y=0, line=dict(width=1, color=slope_color, dash="dot"), opacity=0.5,
+                      row=row, col=1, secondary_y=True)
+
+        fig.update_yaxes(title_text="Price", title_font_color=sma_color, tickfont_color=sma_color,
+                         row=row, col=1, secondary_y=False)
+        fig.update_yaxes(title_text=f"d1 ({slope_units})", title_font_color=slope_color,
+                         tickfont_color=slope_color, showgrid=False,
+                         row=row, col=1, secondary_y=True)
+
+    last_date = frame.index[-1]
+    last_date = last_date.strftime("%Y-%m-%d") if hasattr(last_date, "strftime") else str(last_date)
+    fig.update_xaxes(title_text="Date", rangebreaks=[dict(bounds=["sat", "mon"])],
+                     row=len(windows), col=1)
+    fig.update_layout(title=f"{ticker} price, moving averages and their slopes ({last_date})",
+                      template="plotly_white", hovermode="x unified",
+                      margin=dict(l=70, r=80, t=110, b=50),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
+    if height is not None:
+        fig.update_layout(height=height)
+    return fig
+
+
+def write_full_height_html(fig: go.Figure, path, title: str = "") -> None:
+    """Standalone page at 100vh with scrolling off, so stacked rows fill one screen."""
+    div = fig.to_html(include_plotlyjs="cdn", full_html=False, default_height="100vh",
+                      config={"responsive": True})
+    page = ("<!doctype html>\n<html><head><meta charset='utf-8'>\n"
+            f"<title>{title or 'chart'}</title>\n"
+            "<style>html,body{margin:0;padding:0;overflow:hidden;background:#fff}</style>\n"
+            "</head><body>\n" + div + "\n</body></html>\n")
+    Path(path).write_text(page)
