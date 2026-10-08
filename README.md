@@ -63,6 +63,11 @@ python scripts/acd_post_or_filter.py
 # Levels only (pivot range, OR, A/C) for several tickers
 python scripts/run_acd_day.py SPY QQQ IWM 2026-09-18 --levels-only --a-atr 0.1 --c-atr 0.15
 
+# Price + moving-average charts for a watchlist (HTML + PNG, one current copy each)
+#   -> linechart/<TICKER>.html and .png; tickers come from config/watchlist.json (git-ignored)
+cp config/watchlist.example.json config/watchlist.json   # first time: edit the ticker list
+python scripts/make_ma_charts.py
+
 # UI
 streamlit run app/streamlit_app.py
 

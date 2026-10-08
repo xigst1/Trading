@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to config/watchlist.json (git-ignored) and edit. start_date is optional; without it the script charts the last lookback_days.",
+  "tickers": ["SPY", "QQQ", "^VIX", "^GSPC", "AAPL", "MSFT", "NVDA", "BRK-B"],
+  "windows": [5, 20, 50],
+  "start_date": "2026-01-01",
+  "lookback_days": 400
+}
