@@ -9,7 +9,8 @@ previous session's):
     python scripts/acd_nightly_pivots.py --tickers AAPL MSFT NVDA  # custom list
 
 Output: data/acd/pivots/pivot_ranges_<source_date>.csv, where source_date is the
-session whose high/low/close were used. The ranges apply to the NEXT session.
+session whose high/low/close were used. The ranges apply to the NEXT session. The S&P 500 run
+includes the 11 sector ETFs (sector "ETF"), so the morning scan covers them as well.
 Daily bars are also merged into the local archive (data/daily/) unless --no-archive.
 """
 
@@ -29,7 +30,7 @@ from acd.pivot_scan import (build_pivot_table, last_completed_session_cutoff, pa
                             symbols_missing_session)
 from common.config import DATA_DIR  # noqa: E402
 from common.market_data import LocalStore, YFinanceProvider  # noqa: E402
-from common.universe import load_sp500, refresh_sp500  # noqa: E402
+from common.universe import add_sector_etfs, load_sp500, refresh_sp500  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -47,7 +48,8 @@ def main(argv=None) -> int:
     parser.add_argument("--fallback-interval", default="5m", help="Bar size for that rebuild (default 5m)")
     args = parser.parse_args(argv)
 
-    universe = refresh_sp500() if args.refresh_universe else load_sp500()
+    # The 11 sector ETFs are scanned with the stocks, so the morning scan picks them up too.
+    universe = add_sector_etfs(refresh_sp500() if args.refresh_universe else load_sp500())
     if args.tickers:
         tickers = [t.upper().replace(".", "-") for t in args.tickers]
     else:
