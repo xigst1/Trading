@@ -60,6 +60,11 @@ python scripts/acd_morning_or_scan.py
 #   Options: --last-bars 3 (minimum run; 0 = back to 09:55), --completed-only, --date D --as-of 11:36 (replay a past session)
 python scripts/acd_post_or_filter.py
 
+# S&P 500, last two years of daily prices: one HTML page, a chart per stock grouped by sector (4 columns).
+#   Click a chart to flip it between line and OHLC. -> reports/sp500_ohlc_<date>.html (git-ignored)
+#   Downloads to data/ohlc/; add --from-cache to rebuild the page without downloading, --limit 20 for a quick test
+python scripts/sp500_ohlc_html.py
+
 # Levels only (pivot range, OR, A/C) for several tickers
 python scripts/run_acd_day.py SPY QQQ IWM 2026-09-18 --levels-only --a-atr 0.1 --c-atr 0.15
 

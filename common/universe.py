@@ -107,3 +107,29 @@ def sp500_tickers(root: Union[str, Path, None] = None, sector: Optional[str] = N
     if sector:
         df = df[df["sector"].str.lower() == sector.lower()]
     return df["symbol"].tolist()
+
+
+# The 11 Select Sector SPDR ETFs, one per S&P 500 sector. They are priced and scanned alongside the
+# stocks but kept in their own group ("ETF") and have no market cap of their own.
+SECTOR_ETF_GROUP = "ETF"
+SECTOR_ETFS = [
+    ("XLC", "Communication Services"), ("XLY", "Consumer Discretionary"), ("XLP", "Consumer Staples"),
+    ("XLE", "Energy"), ("XLF", "Financials"), ("XLV", "Health Care"), ("XLI", "Industrials"),
+    ("XLK", "Information Technology"), ("XLB", "Materials"), ("XLRE", "Real Estate"), ("XLU", "Utilities"),
+]
+
+
+def sector_etf_frame() -> pd.DataFrame:
+    """The sector ETFs in the same columns as the S&P 500 list (no market cap, rank or price)."""
+    return pd.DataFrame([
+        {"symbol": symbol, "name": f"Select Sector SPDR: {sector}", "sector": SECTOR_ETF_GROUP,
+         "market_cap_rank": None, "market_cap": None, "price": None}
+        for symbol, sector in SECTOR_ETFS
+    ])
+
+
+def add_sector_etfs(universe: pd.DataFrame) -> pd.DataFrame:
+    """``universe`` plus the sector ETFs (skipping any already present)."""
+    etfs = sector_etf_frame()
+    etfs = etfs[~etfs["symbol"].isin(universe["symbol"])]
+    return pd.concat([universe, etfs], ignore_index=True)
